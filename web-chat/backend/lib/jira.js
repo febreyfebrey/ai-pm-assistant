@@ -106,3 +106,85 @@ export function hasJiraCreds() {
   const { email, token } = getConfig();
   return !!(email && token);
 }
+
+// =====================================================
+// Issue creation / mutation
+// =====================================================
+
+/**
+ * Create a Jira issue.
+ * @param {Object} fields - Jira fields object (project, issuetype, summary, description ADF, priority, etc.)
+ * @returns {Promise<{key: string, id: string, self: string}>}
+ */
+export async function createIssue(fields) {
+  const { baseUrl } = getConfig();
+  const res = await fetch(`${baseUrl}/rest/api/3/issue`, {
+    method: 'POST',
+    headers: {
+      Authorization: authHeader(),
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`createIssue ${res.status}: ${errText.slice(0, 500)}`);
+  }
+  return res.json();
+}
+
+/**
+ * Upload an attachment to an issue.
+ * Jira requires `X-Atlassian-Token: no-check` header on this endpoint.
+ *
+ * @param {string} issueKey - e.g. "RDC-9999"
+ * @param {{filename: string, buffer: Buffer, contentType: string}} file
+ * @returns {Promise<Array<{id: string, filename: string, content: string}>>}
+ */
+export async function addAttachment(issueKey, file) {
+  const { baseUrl } = getConfig();
+  const form = new FormData();
+  // Node's built-in FormData accepts Blob; convert Buffer → Blob
+  const blob = new Blob([file.buffer], { type: file.contentType || 'application/octet-stream' });
+  form.append('file', blob, file.filename);
+
+  const res = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/attachments`, {
+    method: 'POST',
+    headers: {
+      Authorization: authHeader(),
+      Accept: 'application/json',
+      'X-Atlassian-Token': 'no-check',
+    },
+    body: form,
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`addAttachment ${res.status}: ${errText.slice(0, 500)}`);
+  }
+  return res.json();
+}
+
+/**
+ * Replace the description of an existing issue with a new ADF document.
+ * @param {string} issueKey
+ * @param {Object} descriptionADF - ADF doc `{ type: 'doc', version: 1, content: [...] }`
+ */
+export async function patchDescription(issueKey, descriptionADF) {
+  const { baseUrl } = getConfig();
+  const res = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: authHeader(),
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ fields: { description: descriptionADF } }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`patchDescription ${res.status}: ${errText.slice(0, 500)}`);
+  }
+  // PUT returns 204 No Content on success
+  return { ok: true };
+}

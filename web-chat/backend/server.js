@@ -35,7 +35,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { fetchMergedGroupMembers, hasJiraCreds } from './lib/jira.js';
+import { fetchMergedGroupMembers, hasJiraCreds, createIssue, addAttachment, patchDescription } from './lib/jira.js';
+import { convert as markdownToAdf, findImagePlaceholders } from './lib/markdown-to-adf.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -219,7 +220,7 @@ const TOOLS = [
         },
         html: {
           type: 'string',
-          description: '完整的 HTML 片段（包含 <style> 內嵌 CSS）。規則：(1) 使用灰階/淡色系（#333/#666/#999/#eee/#f5f5f5），不用高飽和色 (2) 元素用 dashed border 或 solid thin border 表示 (3) 不要 JS 只要結構 (4) 寬度 max 800px 置中 (5) 用 system font sans-serif (6) 標註重點用文字，不用真實圖片 (7) 互動元素（按鈕/輸入框）用明顯虛線框表示',
+          description: '完整的 HTML 片段（包含 <style> 內嵌 CSS）。規則：(1) 使用灰階/淡色系（#333/#666/#999/#eee/#f5f5f5），不用高飽和色 (2) 元素用 dashed border 或 solid thin border 表示 (3) 寬度 max 800px 置中 (4) 用 system font sans-serif (5) 標註重點用文字，不用真實圖片 (6) 互動元素（按鈕/輸入框）用明顯虛線框表示 (7) **每個可獨立識別的區塊（按鈕/表單/區段/卡片/標題）必須有 `data-section` 屬性 + onclick 觸發 click-to-edit，例如：`<div class="form-block" data-section="login_form" onclick="parent.postMessage({type:\'visual-edit\',artifact:\'wireframe\',section:this.dataset.section,label:\'登入表單\'},\'*\')">`，cursor 設為 pointer 提示可點 (8) 不要其他 JS，只用 inline onclick 觸發 postMessage',
         },
       },
       required: ['title', 'html'],
@@ -475,6 +476,184 @@ app.post('/api/chat', async (req, res) => {
     }
 
     res.status(500).json({ error: err.message || '伺服器錯誤' });
+  }
+});
+
+// =====================================================
+// Jira issue creation with attachment (3-step chain)
+// =====================================================
+
+// Component name → ID (per .claude/rules/tutorabc-context.md)
+const COMPONENT_ID_MAP = {
+  'AI 智能應用': '10080',
+  'APP 應用程式': '10013',
+  'CRM 名單管理': '10005',
+  'DATA 數據與報表': '10010',
+  'GTR 教研管理': '10009',
+  'HR 人資系統': '10000',
+  'INFRA 底層架構': '10008',
+  'MD 行銷系統': '10012',
+  'OMS 銷售管理': '10011',
+  'OMC 運維團隊': '10187',
+  'SHOP 直播電商': '10081',
+  'UIUX 使用體驗': '10047',
+  'WEB 對外網站': '10003',
+};
+
+// Issue type name → ID (per .claude/rules/tutorabc-context.md)
+const ISSUETYPE_ID_MAP = {
+  '需求單': '10000',
+  'Bug': '10004',
+  'e-Service': '10071',
+  'Task': '10002',
+};
+
+const PROJECT_KEY = 'RDC';
+
+function lookupReporter(name) {
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  let match = allowedReportersCache.find(r => r.displayName === name);
+  if (!match) {
+    match = allowedReportersCache.find(r =>
+      r.displayName.toLowerCase().includes(lower) ||
+      (r.email || '').toLowerCase().startsWith(lower)
+    );
+  }
+  return match || null;
+}
+
+function adfFromText(text) {
+  // Wrap plain text as a minimal ADF doc — used for cf_10093 預期效益
+  return {
+    version: 1,
+    type: 'doc',
+    content: [{
+      type: 'paragraph',
+      content: [{ type: 'text', text: String(text) }],
+    }],
+  };
+}
+
+function buildJiraFields(ticket, attachmentMap, reporter) {
+  const fields = {
+    project: { key: PROJECT_KEY },
+    issuetype: { id: ISSUETYPE_ID_MAP[ticket.type] || ISSUETYPE_ID_MAP['需求單'] },
+    summary: ticket.summary,
+    description: markdownToAdf(ticket.description || '', attachmentMap),
+    priority: { name: ticket.priority || 'Medium' },
+  };
+
+  if (reporter) {
+    fields.reporter = { accountId: reporter.accountId };
+  }
+
+  const compId = COMPONENT_ID_MAP[ticket.component];
+  if (compId) {
+    fields.components = [{ id: compId }];
+  }
+
+  if (ticket.affected_users) {
+    fields.customfield_10091 = String(ticket.affected_users);
+  }
+  if (ticket.expected_benefit) {
+    fields.customfield_10093 = adfFromText(ticket.expected_benefit);
+  }
+
+  return fields;
+}
+
+app.post('/api/jira/create-with-attachment', async (req, res) => {
+  try {
+    const { ticket, attachments = [], dryRun = true } = req.body;
+
+    if (!ticket || typeof ticket !== 'object') {
+      return res.status(400).json({ error: 'ticket payload required' });
+    }
+    if (!hasJiraCreds()) {
+      return res.status(503).json({ error: 'Jira credentials not configured (JIRA_EMAIL / JIRA_API_TOKEN)' });
+    }
+
+    const reporter = lookupReporter(ticket.reporter);
+    if (!reporter) {
+      return res.status(400).json({
+        error: `Reporter "${ticket.reporter}" not found in allowed list. Run /api/admin/reporters to see active members.`,
+      });
+    }
+
+    const compId = COMPONENT_ID_MAP[ticket.component];
+    const expectedFilenames = findImagePlaceholders(ticket.description || '');
+
+    // dryRun: don't touch Jira, return preview
+    if (dryRun) {
+      const fieldsPreview = buildJiraFields(ticket, {}, reporter);
+      const fieldsAfterUpload = buildJiraFields(
+        ticket,
+        Object.fromEntries(expectedFilenames.map(fn => [fn, '<simulated-attachment-id>'])),
+        reporter,
+      );
+      return res.json({
+        dryRun: true,
+        reporter: { displayName: reporter.displayName, accountId: reporter.accountId },
+        component: { name: ticket.component, id: compId || null, recognized: !!compId },
+        plannedAttachments: attachments.map(a => ({
+          filename: a.filename,
+          contentType: a.contentType,
+          sizeBytes: a.dataBase64 ? Math.round(a.dataBase64.length * 3 / 4) : 0,
+          willEmbed: expectedFilenames.includes(a.filename),
+        })),
+        unmatchedPlaceholders: expectedFilenames.filter(fn =>
+          !attachments.find(a => a.filename === fn),
+        ),
+        fieldsBeforeAttach: fieldsPreview,
+        fieldsAfterAttach: fieldsAfterUpload,
+      });
+    }
+
+    // === Real run: 3-step chain ===
+
+    // Step 1: createIssue (description has placeholder paragraphs for images)
+    console.log(`📝 Creating Jira issue: ${ticket.summary}`);
+    const placeholderFields = buildJiraFields(ticket, {}, reporter);
+    const created = await createIssue(placeholderFields);
+    const ticketKey = created.key;
+    console.log(`✅ Created ${ticketKey}`);
+
+    // Step 2: upload each attachment, build filename → id map
+    const attachmentMap = {};
+    const uploadResults = [];
+    for (const att of attachments) {
+      if (!att.filename || !att.dataBase64) continue;
+      console.log(`📎 Uploading ${att.filename}...`);
+      const buffer = Buffer.from(att.dataBase64, 'base64');
+      const uploaded = await addAttachment(ticketKey, {
+        filename: att.filename,
+        buffer,
+        contentType: att.contentType || 'image/png',
+      });
+      const first = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+      attachmentMap[att.filename] = first.id;
+      uploadResults.push({ filename: first.filename, id: first.id });
+      console.log(`   id: ${first.id}`);
+    }
+
+    // Step 3: re-convert markdown with real attachment IDs, patch description
+    if (Object.keys(attachmentMap).length > 0) {
+      console.log(`🔄 Patching description to embed media...`);
+      const finalAdf = markdownToAdf(ticket.description, attachmentMap);
+      await patchDescription(ticketKey, finalAdf);
+      console.log(`✅ Description patched`);
+    }
+
+    res.json({
+      dryRun: false,
+      ticketKey,
+      url: `${process.env.JIRA_BASE_URL || 'https://tutorabc-org.atlassian.net'}/browse/${ticketKey}`,
+      attachments: uploadResults,
+    });
+  } catch (err) {
+    console.error('❌ create-with-attachment error:', err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
