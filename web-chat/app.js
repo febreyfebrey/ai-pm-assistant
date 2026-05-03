@@ -1,8 +1,10 @@
 // ============================================
-// AI PM Assistant — LobeChat-style Chat App
+// AI PM Assistant — Chat App
 // ============================================
 
 const API_BASE = 'http://localhost:3002/api';
+const AI_AVATAR = 'P';
+const USER_AVATAR = 'F';
 
 // --- DOM ---
 const sidebar = document.getElementById('sidebar');
@@ -18,6 +20,8 @@ const sendBtn = document.getElementById('send-btn');
 const themeToggle = document.getElementById('theme-toggle');
 const newChatBtn = document.getElementById('new-chat-btn');
 const searchInput = document.getElementById('search-input');
+const emptyInput = document.getElementById('empty-message-input');
+const emptySendBtn = document.getElementById('empty-send-btn');
 
 // --- State ---
 let conversations = [];
@@ -41,7 +45,8 @@ function init() {
   renderConversations();
   // enableMockMode(); // 已接真實 API，Mock mode 關閉
   bindEvents();
-  input.focus();
+  // Focus the visible composer — empty-state input on first load, chat input afterwards
+  (emptyInput && !emptyState.classList.contains('hidden') ? emptyInput : input).focus();
 }
 
 // --- Theme ---
@@ -53,8 +58,8 @@ function initTheme() {
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('theme', theme);
-  const icon = themeToggle.querySelector('.material-symbols-rounded');
-  icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+  const icon = themeToggle.querySelector('.material-symbols-outlined');
+  if (icon) icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
 }
 
 function toggleTheme() {
@@ -120,11 +125,11 @@ function renderConversations() {
       : '新對話';
 
     const time = formatRelativeTime(conv.updatedAt);
-    const icon = lastMsg && lastMsg.type === 'ai' ? 'smart_toy' : 'chat_bubble';
+    const icon = lastMsg && lastMsg.type === 'ai' ? 'forum' : 'chat_bubble';
 
     el.innerHTML = `
       <div class="conv-icon">
-        <span class="material-symbols-rounded">${icon}</span>
+        <span class="material-symbols-outlined">${icon}</span>
       </div>
       <div class="conv-info">
         <div class="conv-title">${escapeHtml(conv.title)}</div>
@@ -157,11 +162,11 @@ function openConversation(convId) {
       div.className = 'message message--user';
       const attHtml = msg.attachments.map(a =>
         a.mediaType?.startsWith('image/')
-          ? `<div class="msg-attachment pdf"><span class="material-symbols-rounded">image</span><span>${escapeHtml(a.name)}（已上傳過）</span></div>`
-          : `<div class="msg-attachment pdf"><span class="material-symbols-rounded">picture_as_pdf</span><span>${escapeHtml(a.name)}（已上傳過）</span></div>`
+          ? `<div class="msg-attachment pdf"><span class="material-symbols-outlined">image</span><span>${escapeHtml(a.name)}（已上傳過）</span></div>`
+          : `<div class="msg-attachment pdf"><span class="material-symbols-outlined">picture_as_pdf</span><span>${escapeHtml(a.name)}（已上傳過）</span></div>`
       ).join('');
       div.innerHTML = `
-        <div class="msg-avatar">F</div>
+        <div class="msg-avatar">${USER_AVATAR}</div>
         <div class="msg-body">
           <div class="msg-name">You</div>
           ${msg.text ? `<div class="msg-content">${escapeHtml(msg.text)}</div>` : ''}
@@ -195,9 +200,9 @@ function appendMessageDOM(text, type, time, isHtml) {
   const div = document.createElement('div');
   div.className = `message message--${type}`;
 
-  const avatarContent = type === 'ai' ? '🚀' : 'F';
+  const avatarContent = type === 'ai' ? AI_AVATAR : USER_AVATAR;
 
-  const name = type === 'ai' ? 'AI PM Assistant' : 'You';
+  const name = type === 'ai' ? 'PM Assistant' : 'You';
 
   div.innerHTML = `
     <div class="msg-avatar">${avatarContent}</div>
@@ -309,7 +314,7 @@ function addUserMessage(text, attachments) {
       if (a.mediaType.startsWith('image/')) {
         return `<div class="msg-attachment image" data-src="${src}" data-alt="${escapeHtml(a.name)}"><img src="${src}" alt="${escapeHtml(a.name)}"></div>`;
       } else {
-        return `<div class="msg-attachment pdf"><span class="material-symbols-rounded">picture_as_pdf</span><span>${escapeHtml(a.name)}</span></div>`;
+        return `<div class="msg-attachment pdf"><span class="material-symbols-outlined">picture_as_pdf</span><span>${escapeHtml(a.name)}</span></div>`;
       }
     }).join('');
     trailingHtml = `<div class="msg-attachments-grid" data-count="${unusedAttachments.length}">${items}</div>`;
@@ -320,7 +325,7 @@ function addUserMessage(text, attachments) {
     : '';
 
   div.innerHTML = `
-    <div class="msg-avatar">F</div>
+    <div class="msg-avatar">${USER_AVATAR}</div>
     <div class="msg-body">
       <div class="msg-name">You</div>
       ${contentHtml}
@@ -344,7 +349,7 @@ function openLightbox(src, alt) {
   lb.id = 'lightbox';
   lb.innerHTML = `
     <button class="lightbox-close" aria-label="關閉">
-      <span class="material-symbols-rounded">close</span>
+      <span class="material-symbols-outlined">close</span>
     </button>
     <img src="${src}" alt="${escapeHtml(alt || '')}">
   `;
@@ -398,11 +403,9 @@ function addTypingIndicator() {
   div.className = 'message message--ai';
   div.id = 'typing-msg';
   div.innerHTML = `
-    <div class="msg-avatar">
-      🚀
-    </div>
+    <div class="msg-avatar">${AI_AVATAR}</div>
     <div class="msg-body">
-      <div class="msg-name">AI PM Assistant</div>
+      <div class="msg-name">PM Assistant</div>
       <div class="typing">
         <div class="typing-dots">
           <div class="typing-dot"></div>
@@ -495,15 +498,15 @@ function renderAttachments() {
       chip.innerHTML = `
         <img src="${att.previewUrl}" alt="${escapeHtml(att.name)}">
         <button class="att-remove" data-id="${att.id}" title="移除">
-          <span class="material-symbols-rounded" style="font-size:14px">close</span>
+          <span class="material-symbols-outlined" style="font-size:14px">close</span>
         </button>
       `;
     } else {
       chip.innerHTML = `
-        <span class="material-symbols-rounded">picture_as_pdf</span>
+        <span class="material-symbols-outlined">picture_as_pdf</span>
         <span class="att-name">${escapeHtml(att.name)}</span>
         <button class="att-remove" data-id="${att.id}" title="移除">
-          <span class="material-symbols-rounded" style="font-size:16px">close</span>
+          <span class="material-symbols-outlined" style="font-size:16px">close</span>
         </button>
       `;
     }
@@ -598,18 +601,18 @@ function renderWireframe(w) {
   const iframeId = 'wf-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
 
   wrapper.innerHTML = `
-    <div class="msg-avatar">🚀</div>
+    <div class="msg-avatar">${AI_AVATAR}</div>
     <div class="msg-body">
-      <div class="msg-name">AI PM Assistant</div>
+      <div class="msg-name">PM Assistant</div>
       <div class="wireframe-card">
         <div class="wireframe-header">
-          <span class="material-symbols-rounded">draft_orders</span>
+          <span class="material-symbols-outlined">dashboard</span>
           <div class="wireframe-title">
             <strong>${escapeHtml(w.title || 'Wireframe')}</strong>
             ${w.description ? `<div class="wireframe-desc">${escapeHtml(w.description)}</div>` : ''}
           </div>
           <button class="wireframe-expand" data-iframe="${iframeId}" title="放大">
-            <span class="material-symbols-rounded">open_in_full</span>
+            <span class="material-symbols-outlined">open_in_full</span>
           </button>
         </div>
         <div class="wireframe-frame">
@@ -621,8 +624,8 @@ function renderWireframe(w) {
           ></iframe>
         </div>
         <div class="wireframe-actions">
-          <button class="suggestion-chip" data-msg="方向對，繼續">✓ 方向對，繼續</button>
-          <button class="suggestion-chip" data-msg="我要調整這個畫面">✏️ 要調整</button>
+          <button class="suggestion-chip" data-msg="方向對，繼續">方向對，繼續</button>
+          <button class="suggestion-chip" data-msg="我要調整這個畫面">要調整</button>
         </div>
       </div>
       <div class="msg-time">${formatTime(new Date())}</div>
@@ -658,7 +661,7 @@ function openWireframeFullscreen(w) {
   overlay.id = 'wireframe-fullscreen';
   overlay.innerHTML = `
     <button class="lightbox-close" aria-label="關閉">
-      <span class="material-symbols-rounded">close</span>
+      <span class="material-symbols-outlined">close</span>
     </button>
     <iframe
       sandbox="allow-same-origin"
@@ -687,13 +690,13 @@ function renderTicketPreview(t) {
   };
 
   const priorityIcon = {
-    Highest: '🔥',
-    High: '⚡',
-    Medium: '📌',
-    Low: '📎',
+    Highest: 'priority_high',
+    High: 'arrow_upward',
+    Medium: 'flag',
+    Low: 'remove',
   };
 
-  const typeIcon = t.type === 'Bug' ? '🐛' : '📋';
+  const typeIcon = t.type === 'Bug' ? 'bug_report' : 'description';
 
   const row = (label, value) => value
     ? `<div class="ticket-row"><span class="ticket-label">${label}</span><span class="ticket-value">${escapeHtml(value)}</span></div>`
@@ -709,8 +712,8 @@ function renderTicketPreview(t) {
   const html = `
     <div class="ticket-card">
       <div class="ticket-card-header">
-        <span class="ticket-type-badge">${typeIcon} ${escapeHtml(t.type || '需求單')}</span>
-        <span class="ticket-priority" style="color: ${priorityColors[t.priority] || 'var(--text-secondary)'}">${priorityIcon[t.priority] || ''} ${escapeHtml(t.priority || 'Medium')}</span>
+        <span class="ticket-type-badge"><span class="material-symbols-outlined">${typeIcon}</span>${escapeHtml(t.type || '需求單')}</span>
+        <span class="ticket-priority" style="color: ${priorityColors[t.priority] || 'var(--text-secondary)'}"><span class="material-symbols-outlined">${priorityIcon[t.priority] || 'flag'}</span>${escapeHtml(t.priority || 'Medium')}</span>
       </div>
       <div class="ticket-summary">${escapeHtml(t.summary || '(未命名)')}</div>
       ${row('提案人', t.reporter)}
@@ -721,10 +724,10 @@ function renderTicketPreview(t) {
       ${row('對接窗口', t.contact_person)}
       ${descHtml}
       <div class="ticket-actions">
-        <button class="btn btn-primary" onclick="handleAction('確認送出')">✓ 確認送出</button>
-        <button class="btn btn-ghost" onclick="handleAction('我要修改')">✏️ 我要修改</button>
+        <button class="btn btn-primary" onclick="handleAction('確認送出')"><span class="material-symbols-outlined">check</span>確認送出</button>
+        <button class="btn btn-ghost" onclick="handleAction('我要修改')"><span class="material-symbols-outlined">edit</span>我要修改</button>
       </div>
-      <div class="ticket-note">⚠️ 確認送出後，請親自到 Jira 把狀態從「草稿」改為「需求評審」</div>
+      <div class="ticket-note"><span class="material-symbols-outlined">info</span>確認送出後，請親自到 Jira 把狀態從「草稿」改為「需求評審」才算完成送單</div>
     </div>
   `;
   addMessage(html, 'ai', { html: true });
@@ -747,6 +750,33 @@ function bindEvents() {
   sidebarToggle.addEventListener('click', () => sidebar.classList.toggle('open'));
   overlay.addEventListener('click', closeSidebar);
   searchInput.addEventListener('input', renderConversations);
+
+  // Empty-state composer — text-only, delegates to sendMessage
+  if (emptyInput && emptySendBtn) {
+    const updateEmptySendBtn = () => {
+      emptySendBtn.disabled = !emptyInput.value.trim() || isWaiting;
+    };
+    const autoResizeEmpty = () => {
+      emptyInput.style.height = 'auto';
+      emptyInput.style.height = Math.min(emptyInput.scrollHeight, 160) + 'px';
+    };
+    const submitEmpty = () => {
+      const text = emptyInput.value.trim();
+      if (!text || isWaiting) return;
+      emptyInput.value = '';
+      autoResizeEmpty();
+      updateEmptySendBtn();
+      sendMessage(text);
+    };
+    emptyInput.addEventListener('input', () => { updateEmptySendBtn(); autoResizeEmpty(); });
+    emptyInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submitEmpty();
+      }
+    });
+    emptySendBtn.addEventListener('click', submitEmpty);
+  }
 
   // Quick action cards
   document.querySelectorAll('.action-card').forEach(card => {
@@ -898,7 +928,7 @@ function mockReply(msg) {
     return { ...base, message: '好，接下來跟我說一下：\n\n想解決什麼問題？或要做什麼功能？' };
 
   if (m.includes('確認送出'))
-    return { ...base, message: '✅ 工單已建立！\n\n📋 RDC-9999\nhttps://tutorabc-org.atlassian.net/browse/RDC-9999\n\n請提案人自己點開工單確認內容無誤後，將狀態從「草稿」改為「需求評審」才算成功送單！' };
+    return { ...base, message: '工單已建立。\n\nRDC-9999\nhttps://tutorabc-org.atlassian.net/browse/RDC-9999\n\n請提案人自己點開工單確認內容無誤後，將狀態從「草稿」改為「需求評審」才算成功送單。' };
 
   return {
     ...base,

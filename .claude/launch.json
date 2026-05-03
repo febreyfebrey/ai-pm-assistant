@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-chat",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["http-server", "web-chat", "-p", "3000", "-c-1", "--silent"],
+      "port": 3000
+    },
+    {
+      "name": "backend",
+      "cwd": "web-chat/backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 3002
+    }
+  ]
+}
