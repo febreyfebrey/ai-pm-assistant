@@ -1,0 +1,12 @@
+{
+  "name": "ai-pm-assistant-webchat",
+  "version": "0.1.0",
+  "description": "AI PM Assistant Web Chat — Frontend + Testing",
+  "type": "module",
+  "scripts": {
+    "serve": "npx http-server -p 3000 -c-1",
+    "test": "node tests/run.js",
+    "test:quick": "node tests/run.js --skip-api",
+    "test:notify": "node tests/run.js --notify"
+  }
+}

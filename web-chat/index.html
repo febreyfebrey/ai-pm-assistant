@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI PM Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">🚀</div>
+          <span class="brand-name">AI PM Assistant</span>
+        </div>
+        <button class="icon-btn" id="new-chat-btn" title="新對話">
+          <span class="material-symbols-rounded">edit_square</span>
+        </button>
+      </div>
+
+      <div class="sidebar-search">
+        <span class="material-symbols-rounded search-icon">search</span>
+        <input type="text" placeholder="搜尋對話..." id="search-input">
+      </div>
+
+      <div class="sidebar-conversations" id="conversation-list">
+        <!-- Conversations will be injected here -->
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="icon-btn" id="theme-toggle" title="切換主題">
+          <span class="material-symbols-rounded">light_mode</span>
+        </button>
+        <div class="user-info">
+          <div class="user-avatar">F</div>
+          <span class="user-name">Febrey</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Mobile Sidebar Toggle -->
+    <button class="sidebar-toggle" id="sidebar-toggle">
+      <span class="material-symbols-rounded">menu</span>
+    </button>
+
+    <!-- Main Chat -->
+    <main class="main">
+      <!-- Empty State -->
+      <div class="empty-state" id="empty-state">
+        <div class="empty-state-content">
+          <div class="empty-logo">🚀</div>
+          <h1>AI PM Assistant</h1>
+          <p>我可以幫你快速開需求單、回報 Bug、或查詢工單狀態</p>
+          <div class="quick-actions">
+            <button class="action-card" data-message="我要開需求單">
+              <span class="material-symbols-rounded">assignment_add</span>
+              <div class="action-text">
+                <strong>開需求單</strong>
+                <span>引導你完成 Jira 開單流程</span>
+              </div>
+            </button>
+            <button class="action-card" data-message="我要回報 Bug">
+              <span class="material-symbols-rounded">bug_report</span>
+              <div class="action-text">
+                <strong>回報 Bug</strong>
+                <span>快速建立 Bug 工單</span>
+              </div>
+            </button>
+            <button class="action-card" data-message="查詢工單狀態">
+              <span class="material-symbols-rounded">search</span>
+              <div class="action-text">
+                <strong>查詢工單</strong>
+                <span>用工單編號查進度</span>
+              </div>
+            </button>
+            <button class="action-card" data-message="幫我看新進的單">
+              <span class="material-symbols-rounded">filter_list</span>
+              <div class="action-text">
+                <strong>工單分類</strong>
+                <span>自動 triage 待處理工單</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Area (hidden until conversation starts) -->
+      <div class="chat-container hidden" id="chat-container">
+        <div class="chat-header">
+          <div class="chat-header-info">
+            <h2 id="chat-title">新對話</h2>
+          </div>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <!-- Messages injected here -->
+        </div>
+
+        <div class="chat-input-area">
+          <div class="attachments-preview" id="attachments-preview"></div>
+          <div class="input-wrapper">
+            <button class="attach-btn" id="attach-btn" title="附加檔案（圖片/PDF）">
+              <span class="material-symbols-rounded">attach_file</span>
+            </button>
+            <input type="file" id="file-input" multiple accept="image/*,application/pdf" hidden>
+            <textarea
+              id="message-input"
+              placeholder="描述你的需求，或拖拉/貼上圖片..."
+              rows="1"
+              autocomplete="off"
+            ></textarea>
+            <button class="send-btn" id="send-btn" disabled>
+              <span class="material-symbols-rounded">arrow_upward</span>
+            </button>
+          </div>
+          <div class="input-footer">
+            <span>Enter 送出 · Shift+Enter 換行 · 支援圖片/PDF（5MB 內）</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Overlay for mobile sidebar -->
+  <div class="overlay" id="overlay"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
